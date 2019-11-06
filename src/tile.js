@@ -308,8 +308,11 @@ $.Tile.prototype = {
      * where <code>rendered</code> is the context with the pre-drawn image.
      * @param {Number} [scale=1] - Apply a scale to position and size
      * @param {OpenSeadragon.Point} [translate] - A translation vector
+     * @param {Number} overlap - Overlap in pixels between tiles.
+     * If greater than 0, tile position and size will be rounded to avoid
+     * problems with sub-pixel rendering.
      */
-    drawCanvas: function( context, drawingHandler, scale, translate ) {
+    drawCanvas: function( context, drawingHandler, scale, translate, overlap) {
 
         var position = this.position.times($.pixelDensityRatio),
             size     = this.size.times($.pixelDensityRatio),
@@ -352,38 +355,45 @@ $.Tile.prototype = {
             position = position.plus(translate);
         }
 
-        //if we are supposed to be rendering fully opaque rectangle,
-        //ie its done fading or fading is turned off, and if we are drawing
-        //an image with an alpha channel, then the only way
-        //to avoid seeing the tile underneath is to clear the rectangle
-        if (context.globalAlpha === 1 && this._hasTransparencyChannel()) {
-            //clearing only the inside of the rectangle occupied
-            //by the png prevents edge flikering
-            context.clearRect(
-                position.x,
-                position.y,
-                size.x,
-                size.y
-            );
-        }
-
         // This gives the application a chance to make image manipulation
         // changes as we are rendering the image
         drawingHandler({context: context, tile: this, rendered: rendered});
 
-        var sourceWidth, sourceHeight;
+        var sourceX, sourceY, sourceWidth, sourceHeight;
         if (this.sourceBounds) {
+            sourceX = this.sourceBounds.x;
+            sourceY = this.sourceBounds.y;
             sourceWidth = Math.min(this.sourceBounds.width, rendered.canvas.width);
             sourceHeight = Math.min(this.sourceBounds.height, rendered.canvas.height);
         } else {
+            sourceX = 0;
+            sourceY = 0;
             sourceWidth = rendered.canvas.width;
             sourceHeight = rendered.canvas.height;
         }
 
+        // If tiles have overlap, round position and size of tile to avoid
+        // incorrect color and/or alpha for pixels with overlap.
+        // If tiles don't have overlap, rounding may cause visible seams since
+        // the destination box may becomme extend outsinde of the source.
+        if (overlap > 0) {
+            sourceWidth = Math.round(sourceX + sourceWidth) - Math.round(sourceX);
+            sourceHeight = Math.round(sourceY + sourceHeight) - Math.round(sourceY);
+
+            sourceX = Math.round(sourceX);
+            sourceY = Math.round(sourceY);
+
+            size.x = Math.round(position.x + size.x) - Math.round(position.x);
+            size.y = Math.round(position.y + size.y) - Math.round(position.y);
+
+            position.x = Math.round(position.x);
+            position.y = Math.round(position.y);
+        }
+
         context.drawImage(
             rendered.canvas,
-            0,
-            0,
+            sourceX,
+            sourceY,
             sourceWidth,
             sourceHeight,
             position.x,
